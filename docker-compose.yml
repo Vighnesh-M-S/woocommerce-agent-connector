@@ -1,0 +1,57 @@
+# Local WooCommerce stack for testing this connector against a real WordPress
+# + WooCommerce REST API (no WooCommerce.com account or live store needed).
+#
+# Usage:
+#   1. docker compose up -d
+#   2. Wait ~30-60s for WordPress to finish initializing, then open
+#      http://localhost:8080/wp-admin (user: admin / pass: see WORDPRESS_PASSWORD below)
+#   3. Install + activate WooCommerce:
+#        docker compose exec wordpress wp plugin install woocommerce --activate --allow-root
+#      (or do it manually from wp-admin: Plugins -> Add New -> search "WooCommerce" -> Install -> Activate,
+#      then click through the WooCommerce setup wizard)
+#   4. Generate REST API keys:
+#        wp-admin -> WooCommerce -> Settings -> Advanced -> REST API -> Add key
+#        Set permissions to "Read" and copy the generated Consumer key / Consumer secret
+#        into your .env file as WC_CONSUMER_KEY / WC_CONSUMER_SECRET
+#        (WC_BASE_URL should be http://localhost:8080)
+
+services:
+  mysql:
+    image: bitnami/mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: bitnami_wordpress
+      MYSQL_USER: bn_wordpress
+      MYSQL_PASSWORD: wordpresspassword
+    volumes:
+      - mysql_data:/bitnami/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  wordpress:
+    image: bitnami/wordpress:latest
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      WORDPRESS_DATABASE_HOST: mysql
+      WORDPRESS_DATABASE_NAME: bitnami_wordpress
+      WORDPRESS_DATABASE_USER: bn_wordpress
+      WORDPRESS_DATABASE_PASSWORD: wordpresspassword
+      WORDPRESS_USERNAME: admin
+      WORDPRESS_PASSWORD: adminpassword
+      WORDPRESS_EMAIL: admin@example.com
+      WORDPRESS_BLOG_NAME: "WooCommerce Connector Test Store"
+    volumes:
+      - wordpress_data:/bitnami/wordpress
+
+volumes:
+  mysql_data:
+  wordpress_data:
