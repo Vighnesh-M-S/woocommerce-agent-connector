@@ -58,6 +58,19 @@ Credentials are loaded exclusively from environment variables (see below). They 
 
 All three are required. If any is missing, the connector raises a `MissingCredentialsError` naming exactly which variable is missing — it will not run with partial or default credentials.
 
+## Quick check (no Docker, no store, no credentials)
+
+This is the fastest way to verify the connector. It runs an in-repo fake of the WooCommerce REST API, so nothing else needs to be installed or configured:
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+python -m pytest                  # 31 tests: auth, filters, pagination, 429 retry, MCP spec and dispatch
+python scripts/run_demo.py        # starts the fake store and calls all 9 MCP tools
+```
+
+The fake store lives in `fake_store/server.py`. It checks Basic auth and returns sample orders, products, and customers for the query parameters the connector sends. It can also return forced HTTP 429 responses to exercise retry and backoff.
+
 ## Setup and run
 
 ```bash
@@ -73,9 +86,9 @@ python mcp_server.py
 
 Point your Agent Studio MCP client configuration at this command (`python mcp_server.py`, run from this directory) so the agent can discover and call the 9 tools listed above.
 
-## Local testing with Docker
+## Local testing with Docker (optional, for exploring a real WooCommerce store)
 
-No live WooCommerce store or WooCommerce.com account is required to test this connector — `docker-compose.yml` spins up a local WordPress + MySQL stack you can install WooCommerce into.
+`docker-compose.yml` spins up a local WordPress + MySQL stack you can install WooCommerce into. **Important:** WooCommerce accepts Basic auth only over HTTPS. On `http://localhost:8080` it rejects the connector's requests with HTTP 401, even with correct keys. The Docker stack is useful for seeing the WooCommerce admin and creating sample data, but live connector calls against it need an HTTPS endpoint. The tests and demo above do not need Docker.
 
 ```bash
 docker compose up -d
@@ -91,7 +104,7 @@ Then:
    (or manually: **Plugins → Add New** → search "WooCommerce" → **Install** → **Activate**, then click through the setup wizard.)
 3. Generate REST API keys at **WooCommerce → Settings → Advanced → REST API** as described above, with **Read** permissions.
 4. Put the generated key/secret into your `.env` file, with `WC_BASE_URL=http://localhost:8080`.
-5. Run `python mcp_server.py` as above, or run the test suite against mocked responses with `pytest` (the test suite does not require Docker or a live store at all).
+5. Keys created here authenticate against WooCommerce's HTTPS endpoints only. Use the **Quick check** above to verify the connector itself.
 
 ## Rate limits
 
@@ -106,7 +119,7 @@ WooCommerce does not publish a hard, documented rate limit for the REST API — 
 
 - **Read-only.** By design, this connector only issues GET requests. No order, product, or customer data in WooCommerce is ever created, modified, or deleted by this connector.
 - **WooCommerce REST API v3** (`/wp-json/wc/v3/...`) is assumed. Older API versions (v1/v2) are not supported.
-- **Tested against WooCommerce 8.x** running on WordPress, via the local Docker Compose stack described above. Other versions implementing the same v3 REST API contract should work but are not explicitly verified.
+- **Not yet verified against a live WooCommerce store.** The test suite and demo run against `fake_store/`, an in-repo fake that implements only the endpoints, parameters, and auth behavior the connector uses. The local Docker stack runs WooCommerce 11.1.2, but live calls over plain HTTP are rejected by WooCommerce (Basic auth requires HTTPS), so an HTTPS endpoint is needed for a live check.
 - Pagination is controlled per-call via `limit`/`offset` (mapped to WooCommerce's `per_page`/`offset` query params); there is no automatic "fetch everything" behavior, to avoid an agent accidentally pulling a store's entire order history in one call.
 - `search_orders`/`search_products`/`search_customers` rely on WooCommerce's built-in `search` query parameter, which does a broad text match (not a structured query) — expect reasonable-but-not-exact-SQL-match results, consistent with how WooCommerce's own admin search behaves.
 - Credentials are read only from environment variables (optionally via a local `.env` file through `python-dotenv`); they are never hardcoded or logged.
